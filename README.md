@@ -22,9 +22,15 @@ Troca de cor do território conquistado
 
 Retorno ao jogo com tropas iniciais
 
+Contra-ataque: se o atacante perder todas as tropas, a defesa conquista o território dele
+
 Exibição contínua do mapa do mundo atualizado
 
-Menus interativos para ações do jogador
+Menus interativos para ações do jogador (Atacar, Verificar missão, Sair)
+
+Validação de toda a entrada do usuário (letras, campos vazios e números fora do intervalo não travam o jogo)
+
+Fim de jogo automático quando um único exército domina o mapa
 
 🧩 Sistema de Missões
 
@@ -38,9 +44,9 @@ Reduzir um território inimigo a zero tropas
 
 Comportamento das missões:
 
-Missões são exibidas apenas uma vez, no início
+Missões são exibidas no início, e o progresso pode ser consultado pela opção "Verificar missão"
 
-A verificação ocorre silenciosamente ao longo do jogo
+A verificação de conclusão ocorre silenciosamente após cada batalha
 
 Algumas missões permitem:
 
@@ -62,7 +68,51 @@ Missão “Reduzir território a zero” gera automaticamente uma nova missão
 
 Menu especial após concluir a missão “Vencer três batalhas seguidas”
 
+Missão “Eliminar todas as tropas de uma cor” encerra a partida com vitória
+
+Não é possível atacar um território do mesmo exército
+
+Cores são padronizadas em maiúsculas ("azul" e "Azul" são o mesmo exército)
+
+Reset restaura o mapa exatamente como foi cadastrado
+
 Pausas estratégicas para melhor visualização dos resultados
+
+▶️ Como compilar e executar
+
+Com make:
+
+```bash
+make        # compila
+make run    # compila e executa
+make clean  # apaga o executável
+```
+
+Sem make (Linux, macOS ou Windows com MinGW):
+
+```bash
+gcc -Wall -Wextra -Iinclude -o war src/*.c
+./war
+```
+
+📁 Estrutura do Projeto
+
+```
+Desafio-Jogo-War/
+├── include/
+│   ├── entrada.h      # protótipos da leitura de teclado
+│   ├── territorio.h   # struct Territorio, constantes e resultados de batalha
+│   └── missoes.h      # struct Missao e identificadores das missões
+├── src/
+│   ├── main.c         # fluxo do jogo: menus e turnos
+│   ├── entrada.c      # leitura segura de textos e números
+│   ├── territorio.c   # cadastro, mapa, batalhas e reset
+│   └── missoes.c      # sorteio, progresso e verificação das missões
+├── Makefile
+└── README.md
+```
+
+Os arquivos `.h` dizem o que cada módulo oferece; os `.c` dizem como ele faz. O `main.c` só conversa com os módulos pelas funções declaradas nos `.h`.
 
 🛠️ Conceitos Técnicos Utilizados
 
@@ -72,9 +122,15 @@ Ponteiros e passagem por referência
 
 malloc e calloc para alocação dinâmica
 
-Modularização com funções específicas
+Modularização em vários arquivos (.h e .c), com include guards e Makefile
 
-Manipulação de strings (strcpy, strcmp, strstr)
+Estado da missão agrupado em uma struct, sem variáveis globais
+
+Manipulação de strings (strcpy, strcmp, strcat, toupper)
+
+Cópia de blocos de memória com memcpy (backup do mapa para o reset)
+
+Constantes para identificar missões, em vez de comparar textos
 
 Geração de números aleatórios (rand, srand)
 
