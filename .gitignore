@@ -1,0 +1,4 @@
+# Executáveis gerados na compilação
+war
+war.exe
+*.o

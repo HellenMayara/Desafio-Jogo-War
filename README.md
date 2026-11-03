@@ -80,12 +80,39 @@ Pausas estratégicas para melhor visualização dos resultados
 
 ▶️ Como compilar e executar
 
+Com make:
+
 ```bash
-gcc -Wall -Wextra -o war desafionivelmestre.c
+make        # compila
+make run    # compila e executa
+make clean  # apaga o executável
+```
+
+Sem make (Linux, macOS ou Windows com MinGW):
+
+```bash
+gcc -Wall -Wextra -Iinclude -o war src/*.c
 ./war
 ```
 
-No Windows (MinGW): `gcc -o war.exe desafionivelmestre.c` e depois `war.exe`.
+📁 Estrutura do Projeto
+
+```
+Desafio-Jogo-War/
+├── include/
+│   ├── entrada.h      # protótipos da leitura de teclado
+│   ├── territorio.h   # struct Territorio, constantes e resultados de batalha
+│   └── missoes.h      # struct Missao e identificadores das missões
+├── src/
+│   ├── main.c         # fluxo do jogo: menus e turnos
+│   ├── entrada.c      # leitura segura de textos e números
+│   ├── territorio.c   # cadastro, mapa, batalhas e reset
+│   └── missoes.c      # sorteio, progresso e verificação das missões
+├── Makefile
+└── README.md
+```
+
+Os arquivos `.h` dizem o que cada módulo oferece; os `.c` dizem como ele faz. O `main.c` só conversa com os módulos pelas funções declaradas nos `.h`.
 
 🛠️ Conceitos Técnicos Utilizados
 
@@ -95,7 +122,9 @@ Ponteiros e passagem por referência
 
 malloc e calloc para alocação dinâmica
 
-Modularização com funções específicas
+Modularização em vários arquivos (.h e .c), com include guards e Makefile
+
+Estado da missão agrupado em uma struct, sem variáveis globais
 
 Manipulação de strings (strcpy, strcmp, strcat, toupper)
 
