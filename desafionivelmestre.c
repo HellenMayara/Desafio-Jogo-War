@@ -4,36 +4,53 @@
 // ---------- BIBLIOTECAS ----------
 #include <stdio.h>   // Entrada e saída de dados
 #include <stdlib.h>  // malloc, calloc, free, rand
-#include <string.h>  // strcpy, strcmp, strstr
+#include <string.h>  // strcpy, strcmp, strcat, memcpy
+#include <ctype.h>   // toupper
 #include <time.h>    // time, srand
 
 // ---------- CONSTANTES ----------
-#define MAX_TERRITORIOS 5     // Quantidade total de territórios
+#define MAX_TERRITORIOS 5    // Quantidade total de territórios
 #define TOTAL_MISSOES 3      // Quantidade de missões
-#define TROPAS_INICIAIS 5
+#define TROPAS_INICIAIS 5    // Tropas que um território recebe ao ser conquistado
+#define MAX_TROPAS_CADASTRO 99
+#define TAM_NOME 30
+#define TAM_COR 10
+#define TAM_MISSAO 100
+
+// Cada missão tem um número fixo. Comparar números é mais seguro do que
+// comparar textos com strstr: se o texto da missão mudar, o jogo continua funcionando.
+#define MISSAO_ELIMINAR_COR 0
+#define MISSAO_VENCER_TRES 1
+#define MISSAO_ZERAR_TERRITORIO 2
 
 // ---------- ESTRUTURA ----------
 typedef struct {
-    char nome[30];   // Nome do território
-    char cor[10];    // Cor do exército
-    int tropas;      // Quantidade de tropas
+    char nome[TAM_NOME];  // Nome do território
+    char cor[TAM_COR];    // Cor do exército
+    int tropas;           // Quantidade de tropas
 } Territorio;
 
 // ---------- VARIÁVEIS GLOBAIS ----------
-char corMissao[10];        // Cor usada na missão de eliminação
-int vitoriasSeguidas = 0;  // Contador de vitórias consecutivas
-int territoriosZerados = 0; // Conta quantos territórios inimigos foram reduzidos a zero tropas
+char corMissao[TAM_COR];    // Cor usada na missão de eliminação
+int vitoriasSeguidas = 0;   // Contador de vitórias consecutivas
+int territoriosZerados = 0; // Quantos territórios inimigos foram reduzidos a zero tropas
 
 // ---------- PROTÓTIPOS ----------
 void limparBuffer();
+void pausar();
+void lerTexto(char *destino, int tamanho);
+int lerInteiro(int minimo, int maximo);
+void paraMaiusculas(char *texto);
 void exibirMapa(Territorio *mapa, int tamanho);
 int atacar(Territorio *atacante, Territorio *defensor);
 void sortearCorMissao(Territorio *mapa, int tamanho);
-void atribuirMissao(char *destino, char *missoes[], int totalMissoes, Territorio *mapa, int tamanho);
+int atribuirMissao(char *destino, char *missoes[], int totalMissoes, Territorio *mapa, int tamanho);
 void exibirMissao(char *missao);
-int verificarMissao(char *missao, Territorio *mapa, int tamanho);
-void resetarJogo(Territorio *mapa, int tamanho);
-void liberarMemoria(Territorio *mapa, char *missaoJogador);
+int verificarMissao(int idMissao, Territorio *mapa, int tamanho);
+void exibirProgresso(int idMissao, char *missao, Territorio *mapa, int tamanho);
+int mundoDominado(Territorio *mapa, int tamanho);
+void resetarJogo(Territorio *mapa, Territorio *mapaOriginal, int tamanho);
+void liberarMemoria(Territorio *mapa, Territorio *mapaOriginal, char *missaoJogador);
 
 // ---------- LIMPA BUFFER ----------
 void limparBuffer() {
@@ -41,16 +58,79 @@ void limparBuffer() {
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
+// ---------- PAUSA ----------
+void pausar() {
+    printf("\nPressione ENTER para continuar...");
+    limparBuffer();
+}
+
+// ---------- LÊ TEXTO COM SEGURANÇA ----------
+// Lê uma linha, remove o '\n' e não aceita campo vazio.
+// Se a pessoa digitar mais caracteres do que cabem, o excesso é descartado
+// (senão ele "vazaria" para a próxima leitura).
+void lerTexto(char *destino, int tamanho) {
+    while (1) {
+        if (fgets(destino, tamanho, stdin) == NULL) {
+            printf("\nEntrada encerrada.\n");
+            exit(0);
+        }
+
+        if (strchr(destino, '\n') == NULL)
+            limparBuffer();
+
+        destino[strcspn(destino, "\n")] = '\0';
+
+        if (strlen(destino) > 0)
+            return;
+
+        printf("Campo obrigatório, digite novamente: ");
+    }
+}
+
+// ---------- LÊ NÚMERO COM SEGURANÇA ----------
+// Repete a pergunta até receber um número inteiro entre minimo e maximo.
+// Sem isso, digitar uma letra no scanf travava o jogo em loop infinito.
+int lerInteiro(int minimo, int maximo) {
+    int valor;
+    int lido;
+
+    while (1) {
+        lido = scanf("%d", &valor);
+
+        if (lido == EOF) {
+            printf("\nEntrada encerrada.\n");
+            exit(0);
+        }
+
+        limparBuffer();
+
+        if (lido == 1 && valor >= minimo && valor <= maximo)
+            return valor;
+
+        printf("Valor inválido! Digite um número entre %d e %d: ", minimo, maximo);
+    }
+}
+
+// ---------- CONVERTE PARA MAIÚSCULAS ----------
+// Assim "azul", "Azul" e "AZUL" contam como o mesmo exército.
+void paraMaiusculas(char *texto) {
+    for (int i = 0; texto[i] != '\0'; i++) {
+        texto[i] = toupper((unsigned char) texto[i]);
+    }
+}
+
 // ---------- EXIBE MAPA ----------
 void exibirMapa(Territorio *mapa, int tamanho) {
     printf("\n===== MAPA DO MUNDO =====\n");
 
     for (int i = 0; i < tamanho; i++) {
-        printf("%d - %s         | Exército: %s               | Tropas: %d\n", i + 1, mapa[i].nome, mapa[i].cor, mapa[i].tropas);
+        printf("%d - %-20s | Exército: %-10s | Tropas: %d\n",
+               i + 1, mapa[i].nome, mapa[i].cor, mapa[i].tropas);
     }
 }
 
 // ---------- FUNÇÃO DE ATAQUE ----------
+// Retorna: 1 = vitória do ataque | 0 = vitória da defesa | -1 = empate
 int atacar(Territorio *atacante, Territorio *defensor) {
 
     // Sorteio dos dados (1 a 6)
@@ -58,26 +138,25 @@ int atacar(Territorio *atacante, Territorio *defensor) {
     int dadoDefensor = rand() % 6 + 1;
 
     printf("\n--- RESULTADO DA BATALHA ---\n");
-    printf(
-    "O Atacante %s rolou o dado e tirou: %d | O Defensor %s rolou o dado e tirou: %d\n", atacante->nome, dadoAtacante, defensor->nome, dadoDefensor
-);
+    printf("O Atacante %s rolou o dado e tirou: %d | O Defensor %s rolou o dado e tirou: %d\n",
+           atacante->nome, dadoAtacante, defensor->nome, dadoDefensor);
 
+    // Empate: ninguém perde tropas
     if (dadoAtacante == dadoDefensor) {
-    printf("Empate nos dados! Ninguém venceu esta batalha.\n");
-    return -1;  // Indica empate, não conta como vitória nem derrota
-} else 
+        printf("Empate nos dados! Ninguém venceu esta batalha.\n");
+        return -1;
+    }
 
     // Caso o atacante vença
-if (dadoAtacante > dadoDefensor) {
+    if (dadoAtacante > dadoDefensor) {
 
-        printf("Vitória do ataque!\n");
+        printf("Vitória do ataque! %s perdeu 1 tropa.\n", defensor->nome);
         defensor->tropas--;
 
         if (defensor->tropas == 0) {
-
             territoriosZerados++;
 
-            printf("\nTerritório conquistado!\n");
+            printf("\nTerritório %s conquistado!\n", defensor->nome);
 
             strcpy(defensor->cor, atacante->cor);
             defensor->tropas = TROPAS_INICIAIS;
@@ -86,39 +165,51 @@ if (dadoAtacante > dadoDefensor) {
         }
 
         return 1;
-
-    } else {
-
-        printf("Vitória da defesa!\n");
-
-        atacante->tropas--;
-        if (atacante->tropas < 0)
-            atacante->tropas = 0;
-
-        return 0;
     }
-    
+
+    // Caso a defesa vença
+    printf("Vitória da defesa! %s perdeu 1 tropa.\n", atacante->nome);
+    atacante->tropas--;
+
+    // Se o atacante ficar sem tropas, a defesa conquista o território dele
+    if (atacante->tropas == 0) {
+        printf("\nA defesa contra-atacou! Território %s conquistado!\n", atacante->nome);
+
+        strcpy(atacante->cor, defensor->cor);
+        atacante->tropas = TROPAS_INICIAIS;
+
+        printf("O território agora pertence ao exército %s!\n", atacante->cor);
+    }
+
+    return 0;
 }
 
 // ---------- SORTEIA COR DA MISSÃO ----------
 void sortearCorMissao(Territorio *mapa, int tamanho) {
-    int indice = rand() % tamanho; // Escolhe índice aleatório
-    strcpy(corMissao, mapa[indice].cor); // Copia a cor do território
+    int indice = rand() % tamanho;        // Escolhe índice aleatório
+    strcpy(corMissao, mapa[indice].cor);  // Copia a cor do território
 }
 
 // ---------- ATRIBUI MISSÃO ----------
-void atribuirMissao(char *destino, char *missoes[], int totalMissoes, Territorio *mapa, int tamanho) {
+// Copia o texto da missão para "destino" e devolve o número da missão sorteada.
+int atribuirMissao(char *destino, char *missoes[], int totalMissoes, Territorio *mapa, int tamanho) {
 
-    int sorteio = rand() % totalMissoes; // Sorteia uma missão
+    int sorteio = rand() % totalMissoes;  // Sorteia uma missão
 
-    strcpy(destino, missoes[sorteio]); // Copia a missão para o jogador
+    strcpy(destino, missoes[sorteio]);    // Copia a missão para o jogador
 
-    // Se a missão for eliminar todas as tropas da cor
-    if (strcmp(destino, "ELIMINE TODAS AS TROPAS DA COR") == 0) {
-        sortearCorMissao(mapa, tamanho); // Sorteia uma cor do mapa
-        strcat(destino, " ");            // Adiciona espaço
-        strcat(destino, corMissao);      // Concatena a cor sorteada
+    // Se a missão for eliminar uma cor, sorteia qual cor
+    if (sorteio == MISSAO_ELIMINAR_COR) {
+        sortearCorMissao(mapa, tamanho);
+        strcat(destino, " ");
+        strcat(destino, corMissao);
     }
+
+    // Toda missão nova começa do zero
+    vitoriasSeguidas = 0;
+    territoriosZerados = 0;
+
+    return sorteio;
 }
 
 // ---------- EXIBE MISSÃO ----------
@@ -128,48 +219,76 @@ void exibirMissao(char *missao) {
     printf("======================\n");
 }
 
-// ---------- VERIFICA MISSÃO ----------
-int verificarMissao(char *missao, Territorio *mapa, int tamanho) {
+// ---------- VERIFICA MISSÃO (silenciosa) ----------
+// Retorna 1 se a missão foi cumprida, 0 se ainda não.
+int verificarMissao(int idMissao, Territorio *mapa, int tamanho) {
 
-    if (strstr(missao, "ELIMINE TODAS AS TROPAS DA COR")) {
-        for (int i = 0; i < tamanho; i++) {
-            if (strcmp(mapa[i].cor, corMissao) == 0 && mapa[i].tropas > 0)
-                return 0;
-        }
-        return 1;
-    }
+    switch (idMissao) {
 
-    if (strstr(missao, "VENÇA 3 BATALHAS SEGUIDAS!")) {
-        return vitoriasSeguidas >= 3;
-    }
-
-    if (strstr(missao, "REDUZA UM TERRIÓRIO INIMIGO A ZERO TROPAS!")) {
-        if (territoriosZerados >= 1) {
-            printf("\nParabéns você concluiu a missão, e conquistou o território inimigo!\n");
+        case MISSAO_ELIMINAR_COR:
+            for (int i = 0; i < tamanho; i++) {
+                if (strcmp(mapa[i].cor, corMissao) == 0 && mapa[i].tropas > 0)
+                    return 0;
+            }
             return 1;
-        }
+
+        case MISSAO_VENCER_TRES:
+            return vitoriasSeguidas >= 3;
+
+        case MISSAO_ZERAR_TERRITORIO:
+            return territoriosZerados >= 1;
     }
 
     return 0;
 }
 
+// ---------- EXIBE PROGRESSO DA MISSÃO ----------
+void exibirProgresso(int idMissao, char *missao, Territorio *mapa, int tamanho) {
+
+    exibirMissao(missao);
+
+    if (idMissao == MISSAO_ELIMINAR_COR) {
+        int restantes = 0;
+        for (int i = 0; i < tamanho; i++) {
+            if (strcmp(mapa[i].cor, corMissao) == 0)
+                restantes++;
+        }
+        printf("Territórios do exército %s ainda no mapa: %d\n", corMissao, restantes);
+    }
+    else if (idMissao == MISSAO_VENCER_TRES) {
+        printf("Vitórias seguidas: %d de 3\n", vitoriasSeguidas);
+    }
+    else if (idMissao == MISSAO_ZERAR_TERRITORIO) {
+        printf("Nenhum território inimigo foi conquistado ainda.\n");
+    }
+}
+
+// ---------- VERIFICA SE UM EXÉRCITO DOMINOU O MUNDO ----------
+// Se todos os territórios têm a mesma cor, não sobra ninguém para atacar.
+int mundoDominado(Territorio *mapa, int tamanho) {
+    for (int i = 1; i < tamanho; i++) {
+        if (strcmp(mapa[i].cor, mapa[0].cor) != 0)
+            return 0;
+    }
+    return 1;
+}
+
 // ---------- RESETAR JOGO ----------
-void resetarJogo(Territorio *mapa, int tamanho) {
+// Volta o mapa exatamente como foi cadastrado (nomes, cores e tropas).
+void resetarJogo(Territorio *mapa, Territorio *mapaOriginal, int tamanho) {
 
     printf("\nResetando o jogo...\n");
 
+    memcpy(mapa, mapaOriginal, tamanho * sizeof(Territorio));
+
     vitoriasSeguidas = 0;
     territoriosZerados = 0;
-
-    for (int i = 0; i < tamanho; i++) {
-        mapa[i].tropas = TROPAS_INICIAIS;
-    }
 }
-    
 
 // ---------- LIBERA MEMÓRIA ----------
-void liberarMemoria(Territorio *mapa, char *missaoJogador) {
+void liberarMemoria(Territorio *mapa, Territorio *mapaOriginal, char *missaoJogador) {
     free(mapa);
+    free(mapaOriginal);
     free(missaoJogador);
 }
 
@@ -179,179 +298,170 @@ int main() {
     srand(time(NULL));
 
     Territorio *mapa = calloc(MAX_TERRITORIOS, sizeof(Territorio));
-    char *missaoJogador = malloc(100 * sizeof(char));
+    Territorio *mapaOriginal = malloc(MAX_TERRITORIOS * sizeof(Territorio)); // Cópia para o reset
+    char *missaoJogador = malloc(TAM_MISSAO * sizeof(char));
 
+    // Sempre conferir se a memória foi alocada
+    if (mapa == NULL || mapaOriginal == NULL || missaoJogador == NULL) {
+        printf("Erro ao alocar memória!\n");
+        liberarMemoria(mapa, mapaOriginal, missaoJogador); // free(NULL) é seguro
+        return 1;
+    }
+
+    // A ordem aqui precisa bater com os números MISSAO_... lá em cima
     char *missoes[TOTAL_MISSOES] = {
         "ELIMINE TODAS AS TROPAS DA COR",
         "VENÇA 3 BATALHAS SEGUIDAS!",
-        "REDUZA UM TERRIÓRIO INIMIGO A ZERO TROPAS!"
+        "REDUZA UM TERRITÓRIO INIMIGO A ZERO TROPAS!"
     };
 
     // ---------- CADASTRO ----------
-    printf("--- Vamos cadastrar os 5 territórios iniciais do nosso mundo! ---\n\n");
-    
+    printf("--- Vamos cadastrar os %d territórios iniciais do nosso mundo! ---\n\n", MAX_TERRITORIOS);
+
     for (int i = 0; i < MAX_TERRITORIOS; i++) {
 
         printf("== Cadastrando Território %d ==\n", i + 1);
 
         printf("Nome do território: ");
-        fgets(mapa[i].nome, 30, stdin);
-        mapa[i].nome[strcspn(mapa[i].nome,"\n")] = '\0';
+        lerTexto(mapa[i].nome, TAM_NOME);
 
         printf("Cor do exército: ");
-        fgets(mapa[i].cor, 10, stdin);
-        mapa[i].cor[strcspn(mapa[i].cor, "\n")] = '\0';
+        lerTexto(mapa[i].cor, TAM_COR);
+        paraMaiusculas(mapa[i].cor);
 
-        printf("Número de Tropas: ");
-        scanf("%d", &mapa[i].tropas);
-        limparBuffer();
+        printf("Número de Tropas (1 a %d): ", MAX_TROPAS_CADASTRO);
+        mapa[i].tropas = lerInteiro(1, MAX_TROPAS_CADASTRO);
 
         printf("-------------------------------------------\n\n");
     }
 
-    // Atribui e exibe missão
-    atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
-    exibirMissao(missaoJogador);
+    // Guarda o mapa inicial para poder resetar depois
+    memcpy(mapaOriginal, mapa, MAX_TERRITORIOS * sizeof(Territorio));
 
-    
+    // Atribui e exibe missão
+    int missaoAtual = atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
+    exibirMissao(missaoJogador);
+    pausar();
 
     // ---------- LOOP PRINCIPAL ----------
-while (1) {
+    int jogando = 1;
 
-    // Exibe o mapa atualizado
-    exibirMapa(mapa, MAX_TERRITORIOS);
+    while (jogando) {
 
-    printf("\n\n--- FASE DE ATAQUE ---\n");
-
-    // Escolha do território atacante
-    int atacante, defensor;
-    printf("\nEscolha o território atacante (1 a 5, 0 para sair): ");
-    scanf("%d", &atacante);
-
-    // Se digitar 0, encerra o jogo
-    if (atacante == 0)
-        break;
-
-    // Escolha do território defensor
-    printf("Escolha o território defensor (1 a 5): ");
-    scanf("%d", &defensor);
-    limparBuffer();
-
-    // Ajusta índices para vetor (0 a 4)
-    atacante--;
-    defensor--;
-
-    // Validação das escolhas
-    if (atacante < 0 || defensor < 0 ||
-            atacante >= MAX_TERRITORIOS || defensor >= MAX_TERRITORIOS ||
-            atacante == defensor) {
-
-            printf("Jogada inválida!\n");
-            continue;
+        // Se só sobrou um exército, não há mais batalhas possíveis
+        if (mundoDominado(mapa, MAX_TERRITORIOS)) {
+            exibirMapa(mapa, MAX_TERRITORIOS);
+            printf("\nO exército %s dominou o mundo! Não há mais territórios para atacar.\n", mapa[0].cor);
+            break;
         }
 
-    // ---------- MENU DE AÇÕES ----------
-    int opcao;
-        printf("\n1 - Atacar\n2 - Verificar missão\n0 - Sair\nEscolha: ");
-        scanf("%d", &opcao);
-        limparBuffer();
+        // Exibe o mapa atualizado
+        exibirMapa(mapa, MAX_TERRITORIOS);
 
-        if (opcao == 1) {
+        // ---------- MENU DE AÇÕES ----------
+        printf("\n1 - Atacar\n2 - Verificar missão\n0 - Sair\nEscolha: ");
+        int opcao = lerInteiro(0, 2);
+
+        if (opcao == 0) {
+            jogando = 0;
+        }
+        else if (opcao == 2) {
+            exibirProgresso(missaoAtual, missaoJogador, mapa, MAX_TERRITORIOS);
+            pausar();
+        }
+        else if (opcao == 1) {
+
+            printf("\n--- FASE DE ATAQUE ---\n");
+
+            printf("Escolha o território atacante (1 a %d): ", MAX_TERRITORIOS);
+            int atacante = lerInteiro(1, MAX_TERRITORIOS) - 1; // Ajusta para índice do vetor (0 a 4)
+
+            printf("Escolha o território defensor (1 a %d): ", MAX_TERRITORIOS);
+            int defensor = lerInteiro(1, MAX_TERRITORIOS) - 1;
+
+            // Validação das escolhas
+            if (atacante == defensor) {
+                printf("Jogada inválida! Um território não pode atacar a si mesmo.\n");
+                pausar();
+                continue;
+            }
+
+            if (strcmp(mapa[atacante].cor, mapa[defensor].cor) == 0) {
+                printf("Jogada inválida! Os dois territórios são do exército %s.\n", mapa[atacante].cor);
+                pausar();
+                continue;
+            }
 
             int resultado = atacar(&mapa[atacante], &mapa[defensor]);
 
-            if (resultado == 1)
-                vitoriasSeguidas++;  // Vitória do atacante
-            else if (resultado == 0)
-                vitoriasSeguidas = 0; // Derrota do atacante
-            else if (resultado == -1)
-                ; // Empate: não altera vitoriasSeguidas
+            if (resultado == 1) {
+                vitoriasSeguidas++;     // Vitória do atacante
+            } else if (resultado == 0) {
+                vitoriasSeguidas = 0;   // Derrota do atacante
+            }
+            // Empate (-1): não altera vitoriasSeguidas
 
-            // PAUSA ANTES DE CONTINUAR
-            printf("\nPressione ENTER para continuar para o próximo turno...");
-            getchar();
+            pausar();
 
+            // Verificação silenciosa da missão
+            if (verificarMissao(missaoAtual, mapa, MAX_TERRITORIOS)) {
 
-            if (verificarMissao(missaoJogador, mapa, MAX_TERRITORIOS)) {
+                printf("\n🎉 MISSÃO CONCLUÍDA! 🎉\n");
+                printf("%s\n", missaoJogador);
 
-                    // Se a missão for "Reduzir um território inimigo a zero tropas"
-                if (strstr(missaoJogador, "REDUZA UM TERRIÓRIO INIMIGO A ZERO TROPAS!")) {
+                // Missão "Reduzir território a zero": gera nova missão e continua
+                if (missaoAtual == MISSAO_ZERAR_TERRITORIO) {
 
-                    // Mensagem de conclusão da missão
-                    printf("\nMISSÃO CONCLUÍDA! VOCÊ VENCEU!\n");
+                    printf("\nVocê conquistou o território inimigo! Será gerada uma nova missão.\n");
+                    pausar();
 
-                    // Mensagem informando nova missão
-                    printf("\nSerá gerada uma nova missão para você!\n");
-                    printf("Pressione ENTER para continuar...");
-                    getchar();  // pausa para o jogador ver a mensagem
-
-                    // Gera nova missão
-                    atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
+                    missaoAtual = atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
                     exibirMissao(missaoJogador);
-
-                    // Continua o jogo sem encerrar
-                    continue;
+                    pausar();
                 }
 
-        // Verifica se a missão "Vencer três batalhas seguidas" foi concluída
-        if (strstr(missaoJogador, "Vencer três batalhas seguidas") &&
-            vitoriasSeguidas >= 3) {
+                // Missão "Vencer 3 batalhas seguidas": menu pós-missão
+                else if (missaoAtual == MISSAO_VENCER_TRES) {
 
-        // Exibe mensagem de vitória
-            printf("\n🎉 MISSÃO CONCLUÍDA! VOCÊ VENCEU! 🎉\n");
-
-            // Exibe o menu pós-missão
-            int opcaoMissao;
-                do {
                     printf("\n===== MENU PÓS-MISSÃO =====\n");
                     printf("1 - Continuar jogo com nova missão\n");
                     printf("2 - Resetar jogo\n");
                     printf("0 - Sair do jogo\n");
                     printf("Escolha uma opção: ");
-                    scanf("%d", &opcaoMissao);
-                    limparBuffer();
+                    int opcaoMissao = lerInteiro(0, 2);
 
-                    switch(opcaoMissao) {
+                    switch (opcaoMissao) {
                         case 1:
-                            // Gerar nova missão
-                            atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
+                            missaoAtual = atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
                             exibirMissao(missaoJogador);
-                            vitoriasSeguidas = 0; // Reseta contador
+                            pausar();
                             break;
 
                         case 2:
-                            // Resetar jogo
-                            for (int i = 0; i < MAX_TERRITORIOS; i++) {
-                                mapa[i].tropas = TROPAS_INICIAIS;
-                            }
-                            vitoriasSeguidas = 0;
-                            atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
+                            resetarJogo(mapa, mapaOriginal, MAX_TERRITORIOS);
+                            missaoAtual = atribuirMissao(missaoJogador, missoes, TOTAL_MISSOES, mapa, MAX_TERRITORIOS);
                             exibirMissao(missaoJogador);
+                            pausar();
                             break;
 
                         case 0:
-                            printf("\nSaindo do jogo...\n");
-                            liberarMemoria(mapa, missaoJogador);
-                            return 0;
-
-                        default:
-                            printf("\nOpção inválida!\n");
+                            jogando = 0;
+                            break;
                     }
+                }
 
-                } while(opcaoMissao < 1 || opcaoMissao > 2); // Sai do menu após ação
-            }
-
-    liberarMemoria(mapa, missaoJogador);
-    printf("\nJogo encerrado. Obrigada por jogar!\n");
-
-    return 0;
+                // Missão "Eliminar uma cor": vitória final
+                else {
+                    printf("\nO exército %s foi eliminado do mapa. VOCÊ VENCEU O JOGO!\n", corMissao);
+                    jogando = 0;
+                }
             }
         }
-
     }
 
+    // Único ponto de saída: a memória é sempre liberada
+    printf("\nJogo encerrado. Obrigada por jogar!\n");
+    liberarMemoria(mapa, mapaOriginal, missaoJogador);
+
+    return 0;
 }
-
-//incluir no jogo quando a defesa zerar a tropa do atacante exibir a mensagem de vitória e conquista do território,
-//a cor e o território do atacante passa a ser o mesmo da defesa.
-

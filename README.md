@@ -22,9 +22,15 @@ Troca de cor do território conquistado
 
 Retorno ao jogo com tropas iniciais
 
+Contra-ataque: se o atacante perder todas as tropas, a defesa conquista o território dele
+
 Exibição contínua do mapa do mundo atualizado
 
-Menus interativos para ações do jogador
+Menus interativos para ações do jogador (Atacar, Verificar missão, Sair)
+
+Validação de toda a entrada do usuário (letras, campos vazios e números fora do intervalo não travam o jogo)
+
+Fim de jogo automático quando um único exército domina o mapa
 
 🧩 Sistema de Missões
 
@@ -38,9 +44,9 @@ Reduzir um território inimigo a zero tropas
 
 Comportamento das missões:
 
-Missões são exibidas apenas uma vez, no início
+Missões são exibidas no início, e o progresso pode ser consultado pela opção "Verificar missão"
 
-A verificação ocorre silenciosamente ao longo do jogo
+A verificação de conclusão ocorre silenciosamente após cada batalha
 
 Algumas missões permitem:
 
@@ -62,7 +68,24 @@ Missão “Reduzir território a zero” gera automaticamente uma nova missão
 
 Menu especial após concluir a missão “Vencer três batalhas seguidas”
 
+Missão “Eliminar todas as tropas de uma cor” encerra a partida com vitória
+
+Não é possível atacar um território do mesmo exército
+
+Cores são padronizadas em maiúsculas ("azul" e "Azul" são o mesmo exército)
+
+Reset restaura o mapa exatamente como foi cadastrado
+
 Pausas estratégicas para melhor visualização dos resultados
+
+▶️ Como compilar e executar
+
+```bash
+gcc -Wall -Wextra -o war desafionivelmestre.c
+./war
+```
+
+No Windows (MinGW): `gcc -o war.exe desafionivelmestre.c` e depois `war.exe`.
 
 🛠️ Conceitos Técnicos Utilizados
 
@@ -74,7 +97,11 @@ malloc e calloc para alocação dinâmica
 
 Modularização com funções específicas
 
-Manipulação de strings (strcpy, strcmp, strstr)
+Manipulação de strings (strcpy, strcmp, strcat, toupper)
+
+Cópia de blocos de memória com memcpy (backup do mapa para o reset)
+
+Constantes para identificar missões, em vez de comparar textos
 
 Geração de números aleatórios (rand, srand)
 
